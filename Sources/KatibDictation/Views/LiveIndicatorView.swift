@@ -108,10 +108,13 @@ public final class LiveIndicatorWindowController {
             context.duration = 0.2
             window.animator().alphaValue = 0
         }, completionHandler: {
-            // A new show() during the fade owns the window now.
-            guard self.showGeneration == generation else { return }
-            window.orderOut(nil)
-            self.viewModel.transcriber = nil
+            // AppKit runs this on the main thread. A new show() during the
+            // fade owns the window now.
+            MainActor.assumeIsolated {
+                guard self.showGeneration == generation else { return }
+                window.orderOut(nil)
+                self.viewModel.transcriber = nil
+            }
         })
     }
 
