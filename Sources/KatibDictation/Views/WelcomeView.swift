@@ -11,8 +11,9 @@ import AppKit
 /// transitions the UI without the user having to come back and click.
 @MainActor
 public struct WelcomeView: View {
-    public let hotkeyName: String
+    public let hotkeySide: AppSettings.HotkeySide
     public let onDone: () -> Void
+    private var hotkeyName: String { hotkeySide.displayName }
 
     /// Set by the host AppDelegate before showing the welcome window. While
     /// non-nil, the post-release dictation pipeline routes the transcript here
@@ -20,16 +21,25 @@ public struct WelcomeView: View {
     /// was heard without spraying text into whatever app happens to be
     /// frontmost.
     public let installTestCallback: (((String) -> Void)?) -> Void
+    /// Same idea for the screenshot step: called when a capture lands.
+    public let installScreenshotCallback: ((() -> Void)?) -> Void
 
     @StateObject private var state = OnboardingState()
+    /// Lights the key in the keyboard drawing while Katib is recording, and
+    /// says so while the speech model is still getting ready.
+    @ObservedObject private var transcriber: StreamingTranscriber
 
     public init(
-        hotkeyName: String,
+        hotkeySide: AppSettings.HotkeySide,
+        transcriber: StreamingTranscriber,
         installTestCallback: @escaping (((String) -> Void)?) -> Void,
+        installScreenshotCallback: @escaping ((() -> Void)?) -> Void,
         onDone: @escaping () -> Void
     ) {
-        self.hotkeyName = hotkeyName
+        self.hotkeySide = hotkeySide
+        self.transcriber = transcriber
         self.installTestCallback = installTestCallback
+        self.installScreenshotCallback = installScreenshotCallback
         self.onDone = onDone
     }
 
@@ -43,7 +53,7 @@ public struct WelcomeView: View {
                 .padding(.vertical, 24)
             footer
         }
-        .frame(width: 560, height: 600)
+        .frame(width: 560, height: 640)
         .background(.regularMaterial)
         .onAppear {
             state.refresh()
@@ -58,6 +68,13 @@ public struct WelcomeView: View {
                 }
             } else {
                 installTestCallback(nil)
+            }
+            if newStep == .screenshot {
+                installScreenshotCallback {
+                    Task { @MainActor in state.screenshotTaken = true }
+                }
+            } else {
+                installScreenshotCallback(nil)
             }
         }
     }
@@ -104,12 +121,16 @@ public struct WelcomeView: View {
         case .welcome: welcomeContent
         case .permissions: permissionsContent
         case .test: testContent
+        case .screenshot: screenshotContent
         case .done: doneContent
         }
     }
 
     private var welcomeContent: some View {
         VStack(alignment: .leading, spacing: 14) {
+            KeyboardHint(side: hotkeySide)
+                .frame(maxWidth: .infinity)
+                .padding(.bottom, 4)
             usageStep(number: 1,
                       title: "Hold **\(hotkeyName)**",
                       detail: "Anywhere on your Mac. Katib only listens while you hold — release to stop.")
@@ -167,6 +188,10 @@ public struct WelcomeView: View {
             Text("Hold **\(hotkeyName)** anywhere — say a sentence or two — release.")
                 .font(.body)
                 .multilineTextAlignment(.center)
+            KeyboardHint(side: hotkeySide, held: transcriber.isRecording)
+            Text(testStatus)
+                .font(.caption)
+                .foregroundColor(transcriber.isRecording ? AppColors.bronze : .secondary)
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color.primary.opacity(0.06))
@@ -185,6 +210,34 @@ public struct WelcomeView: View {
                 }
             }
             Text("Nothing pastes during this test — just confirming the pipeline works.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+        }
+    }
+
+    private var testStatus: String {
+        if !transcriber.isReady { return "Getting speech recognition ready: \(transcriber.statusMessage)" }
+        if transcriber.isRecording { return "Listening… release to finish." }
+        return "Waiting for the key…"
+    }
+
+    private var screenshotContent: some View {
+        VStack(spacing: 18) {
+            Text("Press **⇧⌘3**, then drag over any part of the screen.")
+                .font(.body)
+                .multilineTextAlignment(.center)
+            HStack(spacing: 10) {
+                Image(systemName: state.screenshotTaken ? "checkmark.circle.fill" : "camera.viewfinder")
+                    .font(.title2)
+                    .foregroundColor(state.screenshotTaken ? .green : AppColors.bronze)
+                Text(state.screenshotTaken ? "Got it. The picture is on your clipboard." : "Waiting for a screenshot…")
+                    .font(.callout)
+            }
+            .frame(maxWidth: .infinity, minHeight: 80)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.06)))
+            Text("⇧⌘3 copies a screenshot; ⇧⌘4 opens it in an editor first. Katib takes these keys over from the Mac's "
+                 + "own screenshot tool. You can change them in Settings → Shortcuts.")
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -210,6 +263,11 @@ public struct WelcomeView: View {
                     .keyboardShortcut(.cancelAction)
             }
             Spacer()
+            if state.step == .screenshot && !state.screenshotTaken {
+                Button("Skip") { state.advance() }
+                    .buttonStyle(.link)
+                    .padding(.trailing, 8)
+            }
             Button {
                 if state.step == .done {
                     onDone()
@@ -301,13 +359,14 @@ public struct WelcomeView: View {
 @MainActor
 final class OnboardingState: ObservableObject {
     enum Step: Int, CaseIterable, Equatable {
-        case welcome, permissions, test, done
+        case welcome, permissions, test, screenshot, done
 
         var title: String {
             switch self {
             case .welcome: return "Welcome to Katib"
             case .permissions: return "Grant Permissions"
             case .test: return "Try a Dictation"
+            case .screenshot: return "Try a Screenshot"
             case .done: return "You're Set"
             }
         }
@@ -315,8 +374,8 @@ final class OnboardingState: ObservableObject {
         var subtitle: String? {
             switch self {
             case .welcome: return "كاتب — The Scribe"
-            case .permissions: return "Three one-time prompts. Each opens its System Settings panel."
-            case .test: return nil
+            case .permissions: return "Four one-time prompts. Each opens its System Settings panel."
+            case .test, .screenshot: return nil
             case .done: return "A handful of other things Katib does, while you're here."
             }
         }
@@ -328,6 +387,7 @@ final class OnboardingState: ObservableObject {
     @Published var accessibilityGranted = false
     @Published var screenRecordingGranted = false
     @Published var testTranscript: String?
+    @Published var screenshotTaken = false
 
     var allGranted: Bool { micGranted && speechGranted && accessibilityGranted && screenRecordingGranted }
 
@@ -336,6 +396,7 @@ final class OnboardingState: ObservableObject {
         case .welcome: return true
         case .permissions: return allGranted
         case .test: return testTranscript != nil
+        case .screenshot: return screenshotTaken
         case .done: return true
         }
     }
@@ -345,6 +406,7 @@ final class OnboardingState: ObservableObject {
         case .welcome: return "Get Started"
         case .permissions: return allGranted ? "Continue" : "Waiting for grants…"
         case .test: return testTranscript == nil ? "Waiting for dictation…" : "Sounds Good"
+        case .screenshot: return screenshotTaken ? "Continue" : "Waiting for a screenshot…"
         case .done: return "Start Using Katib"
         }
     }
@@ -354,6 +416,9 @@ final class OnboardingState: ObservableObject {
         step = next
         if step == .test {
             testTranscript = nil
+        }
+        if step == .screenshot {
+            screenshotTaken = false
         }
     }
 

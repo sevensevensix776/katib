@@ -38,6 +38,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// step in WelcomeView so the user can verify the full pipeline without
     /// spraying text into whatever app happens to be frontmost.
     fileprivate var dictationTestCallback: ((String) -> Void)?
+    /// Set while the welcome window's screenshot step waits for a capture.
+    private var screenshotTestCallback: (() -> Void)?
 
     private var lastTranscription: String? { popoverState.lastTranscription }
     private var lastRawText: String?
@@ -106,6 +108,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // bootstrap. Safe to set early.
             screenshotManager.onCaptured = { [weak self] pngData, w, h in
                 self?.clipboard.recordCapturedImage(pngData: pngData, width: w, height: h)
+                self?.screenshotTestCallback?()
             }
 
             // Diagnostic keystroke tap — gated on debugTranscripts so
@@ -396,13 +399,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         let view = WelcomeView(
-            hotkeyName: settings.hotkeySide.displayName,
+            hotkeySide: settings.hotkeySide,
+            transcriber: transcriber,
             installTestCallback: { [weak self] callback in
                 self?.dictationTestCallback = callback
+            },
+            installScreenshotCallback: { [weak self] callback in
+                self?.screenshotTestCallback = callback
             },
             onDone: { [weak self] in
                 self?.settings.hasSeenWelcome = true
                 self?.dictationTestCallback = nil
+                self?.screenshotTestCallback = nil
                 self?.welcomeWindow?.close()
                 self?.welcomeWindow = nil
                 self?.autoOpenPopoverIfPermissionsMissing()
