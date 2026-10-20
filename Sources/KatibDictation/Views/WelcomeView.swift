@@ -263,7 +263,7 @@ public struct WelcomeView: View {
             doneRow(symbol: "command.square", text: "**⌘Space** — command palette: every Katib action + apps + files")
             doneRow(symbol: "doc.on.clipboard", text: "**⇧⌃⌘V** — clipboard history picker")
             doneRow(symbol: "camera.viewfinder", text: "**⇧⌘3 / ⇧⌘4** — screenshots straight to clipboard or annotate first")
-            doneRow(symbol: "rectangle.split.2x1", text: "Window snap — say _\"split left\"_ or _\"maximize\"_ mid-dictation")
+            doneRow(symbol: "rectangle.split.2x1", text: "Window snap — hold **\(hotkeyName)** and say just _\"split left\"_ or _\"maximize\"_, or set keys in Settings")
             doneRow(symbol: "gearshape", text: "Tune everything in the menu bar → Settings · the **ك** lives in your menu bar")
             doneRow(symbol: "character.book.closed", text: "Teach Katib your names and terms in the menu bar → **Edit corrections**")
         }
