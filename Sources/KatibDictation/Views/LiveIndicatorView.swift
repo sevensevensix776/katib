@@ -8,7 +8,7 @@ import KatibCore
 public enum IndicatorState {
     case recording
     case finalizing
-    case success(String)
+    case success(String, heading: String = "Pasted")
     case error(String)
 }
 
@@ -58,7 +58,12 @@ public final class LiveIndicatorWindowController {
         return NSPoint(x: frame.maxX - 416, y: frame.minY + 16)
     }
 
+    /// Bumped on every show, so a hide timer from the previous dictation
+    /// cannot hide the next one.
+    private var showGeneration = 0
+
     public func show(transcriber: StreamingTranscriber) {
+        showGeneration += 1
         viewModel.transcriber = transcriber
         viewModel.state = .recording
         viewModel.recordingStartTime = Date()
@@ -86,8 +91,10 @@ public final class LiveIndicatorWindowController {
 
         switch state {
         case .success, .error:
+            let generation = showGeneration
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
-                self?.hide()
+                guard let self, self.showGeneration == generation else { return }
+                self.hide()
             }
         default:
             break
@@ -96,10 +103,13 @@ public final class LiveIndicatorWindowController {
 
     public func hide() {
         guard let window else { return }
+        let generation = showGeneration
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.2
             window.animator().alphaValue = 0
         }, completionHandler: {
+            // A new show() during the fade owns the window now.
+            guard self.showGeneration == generation else { return }
             window.orderOut(nil)
             self.viewModel.transcriber = nil
         })
@@ -196,12 +206,12 @@ struct LiveIndicatorView: View {
                     .foregroundStyle(.white.opacity(0.7))
                 Spacer()
             }
-        case .success:
+        case .success(_, let heading):
             HStack(spacing: 6) {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green)
                     .font(.system(size: 12))
-                Text("Pasted")
+                Text(heading)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.green.opacity(0.9))
                 Spacer()
@@ -228,7 +238,7 @@ struct LiveIndicatorView: View {
             if let transcriber = viewModel.transcriber {
                 ScrollingTextView(transcriber: transcriber)
             }
-        case .success(let text):
+        case .success(let text, _):
             Text(text)
                 .font(.system(size: 12))
                 .foregroundStyle(.white.opacity(0.8))

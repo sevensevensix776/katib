@@ -16,11 +16,12 @@ public struct WelcomeView: View {
     private var hotkeyName: String { hotkeySide.displayName }
 
     /// Set by the host AppDelegate before showing the welcome window. While
-    /// non-nil, the post-release dictation pipeline routes the transcript here
+    /// non-nil, the post-release dictation pipeline routes the transcript
+    /// (nil when nothing was heard) here
     /// instead of pasting. The Dictation Test step uses this to preview what
     /// was heard without spraying text into whatever app happens to be
     /// frontmost.
-    public let installTestCallback: (((String) -> Void)?) -> Void
+    public let installTestCallback: (((String?) -> Void)?) -> Void
     /// Same idea for the screenshot step: called when a capture lands.
     public let installScreenshotCallback: ((() -> Void)?) -> Void
 
@@ -32,7 +33,7 @@ public struct WelcomeView: View {
     public init(
         hotkeySide: AppSettings.HotkeySide,
         transcriber: StreamingTranscriber,
-        installTestCallback: @escaping (((String) -> Void)?) -> Void,
+        installTestCallback: @escaping (((String?) -> Void)?) -> Void,
         installScreenshotCallback: @escaping ((() -> Void)?) -> Void,
         onDone: @escaping () -> Void
     ) {
@@ -44,7 +45,7 @@ public struct WelcomeView: View {
     init(
         hotkeySide: AppSettings.HotkeySide,
         transcriber: StreamingTranscriber,
-        installTestCallback: @escaping (((String) -> Void)?) -> Void,
+        installTestCallback: @escaping (((String?) -> Void)?) -> Void,
         installScreenshotCallback: @escaping ((() -> Void)?) -> Void,
         startAt: OnboardingState.Step,
         onDone: @escaping () -> Void
@@ -78,7 +79,7 @@ public struct WelcomeView: View {
         .onChange(of: state.step) { _, newStep in
             if newStep == .test {
                 installTestCallback { transcript in
-                    Task { @MainActor in state.recordTestTranscript(transcript) }
+                    Task { @MainActor in state.recordTestResult(transcript) }
                 }
             } else {
                 installTestCallback(nil)
@@ -186,8 +187,21 @@ public struct WelcomeView: View {
                 granted: state.screenRecordingGranted,
                 action: { state.requestScreenRecording() }
             )
-            if !state.allGranted {
-                Text("Toggle each in System Settings, then come back — this screen advances when all four are on.")
+            // macOS often applies a new Screen Recording grant only after
+            // the app restarts, so the row can stay unchecked after the user
+            // turned it on.
+            if state.screenRecordingRequested && !state.screenRecordingGranted {
+                HStack {
+                    Text("Turned Screen Recording on already? Katib needs a restart to see it.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Button("Quit & Reopen") { OnboardingState.relaunch() }
+                        .controlSize(.small)
+                }
+            }
+            if !state.dictationGranted {
+                Text("Toggle each in System Settings, then come back. Continue unlocks when the first three are on.")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -202,14 +216,28 @@ public struct WelcomeView: View {
                 .font(.body)
                 .multilineTextAlignment(.center)
             KeyboardHint(lit: KeyboardHint.dictation(hotkeySide), held: transcriber.isRecording)
-            Text(testStatus)
-                .font(.caption)
-                .foregroundColor(transcriber.isRecording ? AppColors.bronze : .secondary)
+            HStack(spacing: 8) {
+                Text(testStatus)
+                    .font(.caption)
+                    .foregroundColor(transcriber.isRecording ? AppColors.bronze : .secondary)
+                // Setup gives up on a failed model download; let the user
+                // retry here instead of restarting Katib.
+                if !transcriber.isReady && transcriber.statusMessage.localizedCaseInsensitiveContains("failed") {
+                    Button("Try Again") { Task { await transcriber.setup() } }
+                        .controlSize(.small)
+                }
+            }
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color.primary.opacity(0.06))
                     .frame(height: 110)
-                if let transcript = state.testTranscript, !transcript.isEmpty {
+                if state.testMissed && state.testTranscript == nil {
+                    Text("Didn't catch that. Hold the key, speak for a second or two, then release.")
+                        .font(.callout)
+                        .foregroundColor(.orange)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 12)
+                } else if let transcript = state.testTranscript, !transcript.isEmpty {
                     ScrollView {
                         Text(transcript)
                             .font(.body)
@@ -278,7 +306,7 @@ public struct WelcomeView: View {
                     .keyboardShortcut(.cancelAction)
             }
             Spacer()
-            if state.step == .screenshot && !state.screenshotTaken {
+            if (state.step == .screenshot && !state.screenshotTaken) || (state.step == .test && state.testTranscript == nil) {
                 Button("Skip") { state.advance() }
                     .buttonStyle(.link)
                     .padding(.trailing, 8)
@@ -392,14 +420,18 @@ final class OnboardingState: ObservableObject {
     @Published var accessibilityGranted = false
     @Published var screenRecordingGranted = false
     @Published var testTranscript: String?
+    @Published var testMissed = false
+    @Published var screenRecordingRequested = false
     @Published var screenshotTaken = false
 
-    var allGranted: Bool { micGranted && speechGranted && accessibilityGranted && screenRecordingGranted }
+    /// What dictation needs. Screen Recording is not required to continue:
+    /// a new grant can need a restart, and the screenshot step can be skipped.
+    var dictationGranted: Bool { micGranted && speechGranted && accessibilityGranted }
 
     var canAdvance: Bool {
         switch step {
         case .welcome: return true
-        case .permissions: return allGranted
+        case .permissions: return dictationGranted
         case .test: return testTranscript != nil
         case .screenshot: return screenshotTaken
         case .done: return true
@@ -409,7 +441,7 @@ final class OnboardingState: ObservableObject {
     var primaryButtonLabel: String {
         switch step {
         case .welcome: return "Get Started"
-        case .permissions: return allGranted ? "Continue" : "Waiting for grants…"
+        case .permissions: return dictationGranted ? "Continue" : "Waiting for grants…"
         case .test: return testTranscript == nil ? "Waiting for dictation…" : "Sounds Good"
         case .screenshot: return screenshotTaken ? "Continue" : "Waiting for a screenshot…"
         case .done: return "Start Using Katib"
@@ -421,6 +453,7 @@ final class OnboardingState: ObservableObject {
         step = next
         if step == .test {
             testTranscript = nil
+            testMissed = false
         }
         if step == .screenshot {
             screenshotTaken = false
@@ -432,8 +465,27 @@ final class OnboardingState: ObservableObject {
         step = prev
     }
 
-    func recordTestTranscript(_ text: String) {
-        testTranscript = text
+    /// nil means the dictation ended with nothing heard. Ignored once the
+    /// user has left the test step.
+    func recordTestResult(_ text: String?) {
+        guard step == .test else { return }
+        if let text, !text.isEmpty {
+            testTranscript = text
+            testMissed = false
+        } else if testTranscript == nil {
+            testMissed = true
+        }
+    }
+
+    /// Quit and open Katib again, for a Screen Recording grant that macOS
+    /// applies only to a new process. `open` waits for this one to exit
+    /// (the single-instance lock) via the short sleep.
+    static func relaunch() {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
+        task.arguments = ["-c", "sleep 1; /usr/bin/open \"$0\"", Bundle.main.bundlePath]
+        try? task.run()
+        NSApp.terminate(nil)
     }
 
     func refresh() {
@@ -477,6 +529,7 @@ final class OnboardingState: ObservableObject {
     /// flips the toggle in System Settings, `CGPreflightScreenCaptureAccess`
     /// will return true on the next poll and the row auto-advances.
     func requestScreenRecording() {
+        screenRecordingRequested = true
         _ = CGRequestScreenCaptureAccess()
         if !CGPreflightScreenCaptureAccess() {
             SettingsPane.screenRecording.open()

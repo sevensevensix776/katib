@@ -37,9 +37,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// here instead of pasting + recording history. Set by the Dictation Test
     /// step in WelcomeView so the user can verify the full pipeline without
     /// spraying text into whatever app happens to be frontmost.
-    fileprivate var dictationTestCallback: ((String) -> Void)?
+    /// Set while the welcome window's dictation test is showing. Gets the
+    /// transcript, or nil when nothing was heard.
+    fileprivate var dictationTestCallback: ((String?) -> Void)?
+    /// The test callback as it was when the current recording started, so
+    /// leaving the test step mid-dictation cannot send that dictation to the
+    /// paste path, nor a later one to the test.
+    private var recordingTestCallback: ((String?) -> Void)?
     /// Set while the welcome window's screenshot step waits for a capture.
     private var screenshotTestCallback: (() -> Void)?
+    private var welcomeCloseObserver: NSObjectProtocol?
 
     private var lastTranscription: String? { popoverState.lastTranscription }
     private var lastRawText: String?
@@ -409,10 +416,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             },
             onDone: { [weak self] in
                 self?.settings.hasSeenWelcome = true
-                self?.dictationTestCallback = nil
-                self?.screenshotTestCallback = nil
                 self?.welcomeWindow?.close()
-                self?.welcomeWindow = nil
                 self?.autoOpenPopoverIfPermissionsMissing()
             }
         )
@@ -424,6 +428,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.isReleasedWhenClosed = false
         window.center()
         welcomeWindow = window
+        // Done or the close button: either way dictation and screenshots go
+        // back to normal. Closing early shows the welcome again next launch.
+        welcomeCloseObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.dictationTestCallback = nil
+                self.screenshotTestCallback = nil
+                self.welcomeWindow = nil
+                if let token = self.welcomeCloseObserver { NotificationCenter.default.removeObserver(token) }
+                self.welcomeCloseObserver = nil
+            }
+        }
         bringToFront(window)
     }
 
@@ -550,6 +568,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let traceID = TraceID.new()
+        recordingTestCallback = dictationTestCallback
         activeAppWhenRecording = NSWorkspace.shared.frontmostApplication?.localizedName
         recordingStartTime = Date()
         Logger.shared.log("DICT[\(traceID)]: hotkey-down (active=\(activeAppWhenRecording ?? "<unknown>"))")
@@ -603,9 +622,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
+        let testCallback = recordingTestCallback
+        recordingTestCallback = nil
 
         guard let rawText = await transcriber.stopRecording() else {
             Logger.shared.log("No transcription result")
+            testCallback?(nil)
             LiveIndicatorWindowController.shared.updateState(
                 .error("Didn't catch that — check your mic and try again.")
             )
@@ -619,7 +641,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // registered command pattern, execute it and skip the paste path
         // entirely. "New paragraph" substitutes a literal \n\n; "split left"
         // snaps the window; "cancel" drops the transcription silently.
-        if let outcome = VoiceCommandMatcher.shared.match(on: rawText) {
+        // Not during the welcome test: it promises nothing pastes or runs.
+        if testCallback == nil, let outcome = VoiceCommandMatcher.shared.match(on: rawText) {
             switch outcome {
             case .execute(let action):
                 action()
@@ -660,7 +683,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         var polishMs = 0
-        let polishApplied = settings.aiPolishEnabled && AICleanup.shared.isAvailable && dictationTestCallback == nil
+        let polishApplied = settings.aiPolishEnabled && AICleanup.shared.isAvailable && testCallback == nil
         if polishApplied {
             let polishStart = Date()
             correctedText = await AICleanup.shared.polish(correctedText, bundleID: bundleID)
@@ -670,13 +693,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        if let testCallback = dictationTestCallback {
+        if let testCallback {
             let totalMs = Int(Date().timeIntervalSince(pipelineStart) * 1000)
             Logger.shared.log("DICT pipeline: correct=\(correctMs)ms code=\(codeMs)ms polish=0ms paste=0ms total=\(totalMs)ms testMode=true")
             testCallback(correctedText)
             // The dictation window must still finish: without this it stays
             // on "listening" after the welcome test.
-            LiveIndicatorWindowController.shared.updateState(.success("Test heard"))
+            LiveIndicatorWindowController.shared.updateState(.success(correctedText, heading: "Heard"))
             if settings.playFeedbackSounds { NSSound(named: "Pop")?.play() }
             return
         }
