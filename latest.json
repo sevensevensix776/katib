@@ -1,5 +1,5 @@
 {
-  "version": "2.2.1",
-  "url": "https://github.com/sevensevensix776/katib/releases/tag/v2.2.1",
-  "notes": "Fixes for first-time setup: the welcome window opens on the first launch, the menu bar asks for Screen Recording up front, and the dictation window no longer stays on listening after the welcome test."
+  "version": "2.2.2",
+  "url": "https://github.com/sevensevensix776/katib/releases/tag/v2.2.2",
+  "notes": "A clearer first run: the welcome window shows which key to hold and lights it while you dictate, and a new step tries one screenshot. Includes 2.2.1's setup fixes."
 }

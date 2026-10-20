@@ -50,7 +50,7 @@ set -e
 APP_NAME="Katib"
 BUNDLE_ID="com.sevensevensix.katib"
 TEAM_ID="${KATIB_TEAM_ID:-4HUZT3VWKU}"   # 776 Management, LLC.
-VERSION="2.2.1"
+VERSION="2.2.2"
 
 RELEASE=0
 LAUNCH=0
