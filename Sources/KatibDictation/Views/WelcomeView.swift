@@ -24,7 +24,7 @@ public struct WelcomeView: View {
     /// Same idea for the screenshot step: called when a capture lands.
     public let installScreenshotCallback: ((() -> Void)?) -> Void
 
-    @StateObject private var state = OnboardingState()
+    @StateObject private var state: OnboardingState
     /// Lights the key in the keyboard drawing while Katib is recording, and
     /// says so while the speech model is still getting ready.
     @ObservedObject private var transcriber: StreamingTranscriber
@@ -36,6 +36,20 @@ public struct WelcomeView: View {
         installScreenshotCallback: @escaping ((() -> Void)?) -> Void,
         onDone: @escaping () -> Void
     ) {
+        self.init(hotkeySide: hotkeySide, transcriber: transcriber, installTestCallback: installTestCallback,
+                  installScreenshotCallback: installScreenshotCallback, startAt: .welcome, onDone: onDone)
+    }
+
+    /// `startAt` lets tests render one step without clicking through.
+    init(
+        hotkeySide: AppSettings.HotkeySide,
+        transcriber: StreamingTranscriber,
+        installTestCallback: @escaping (((String) -> Void)?) -> Void,
+        installScreenshotCallback: @escaping ((() -> Void)?) -> Void,
+        startAt: OnboardingState.Step,
+        onDone: @escaping () -> Void
+    ) {
+        _state = StateObject(wrappedValue: OnboardingState(step: startAt))
         self.hotkeySide = hotkeySide
         self.transcriber = transcriber
         self.installTestCallback = installTestCallback
@@ -128,7 +142,7 @@ public struct WelcomeView: View {
 
     private var welcomeContent: some View {
         VStack(alignment: .leading, spacing: 14) {
-            KeyboardHint(side: hotkeySide)
+            KeyboardHint(lit: KeyboardHint.dictation(hotkeySide))
                 .frame(maxWidth: .infinity)
                 .padding(.bottom, 4)
             usageStep(number: 1,
@@ -143,7 +157,6 @@ public struct WelcomeView: View {
             usageStep(number: 4,
                       title: "Double-tap to repeat · Esc to cancel",
                       detail: "Quick double-tap of \(hotkeyName) re-pastes the last transcription. Press Esc mid-recording to abort.")
-            tip
         }
     }
 
@@ -188,7 +201,7 @@ public struct WelcomeView: View {
             Text("Hold **\(hotkeyName)** anywhere — say a sentence or two — release.")
                 .font(.body)
                 .multilineTextAlignment(.center)
-            KeyboardHint(side: hotkeySide, held: transcriber.isRecording)
+            KeyboardHint(lit: KeyboardHint.dictation(hotkeySide), held: transcriber.isRecording)
             Text(testStatus)
                 .font(.caption)
                 .foregroundColor(transcriber.isRecording ? AppColors.bronze : .secondary)
@@ -227,6 +240,7 @@ public struct WelcomeView: View {
             Text("Press **⇧⌘3**, then drag over any part of the screen.")
                 .font(.body)
                 .multilineTextAlignment(.center)
+            KeyboardHint(lit: KeyboardHint.screenshot)
             HStack(spacing: 10) {
                 Image(systemName: state.screenshotTaken ? "checkmark.circle.fill" : "camera.viewfinder")
                     .font(.title2)
@@ -234,7 +248,7 @@ public struct WelcomeView: View {
                 Text(state.screenshotTaken ? "Got it. The picture is on your clipboard." : "Waiting for a screenshot…")
                     .font(.callout)
             }
-            .frame(maxWidth: .infinity, minHeight: 80)
+            .frame(maxWidth: .infinity, minHeight: 56)
             .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.06)))
             Text("⇧⌘3 copies a screenshot; ⇧⌘4 opens it in an editor first. Katib takes these keys over from the Mac's "
                  + "own screenshot tool. You can change them in Settings → Shortcuts.")
@@ -251,6 +265,7 @@ public struct WelcomeView: View {
             doneRow(symbol: "camera.viewfinder", text: "**⇧⌘3 / ⇧⌘4** — screenshots straight to clipboard or annotate first")
             doneRow(symbol: "rectangle.split.2x1", text: "Window snap — say _\"split left\"_ or _\"maximize\"_ mid-dictation")
             doneRow(symbol: "gearshape", text: "Tune everything in the menu bar → Settings · the **ك** lives in your menu bar")
+            doneRow(symbol: "character.book.closed", text: "Teach Katib your names and terms in the menu bar → **Edit corrections**")
         }
     }
 
@@ -338,20 +353,6 @@ public struct WelcomeView: View {
             Spacer()
         }
     }
-
-    private var tip: some View {
-        VStack(spacing: 6) {
-            Text("Tip")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundColor(AppColors.bronze)
-            Text("Teach Katib your names and terms in the menu bar → Edit corrections.")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(.top, 12)
-    }
 }
 
 // MARK: - State
@@ -381,7 +382,11 @@ final class OnboardingState: ObservableObject {
         }
     }
 
-    @Published var step: Step = .welcome
+    @Published var step: Step
+
+    init(step: Step = .welcome) {
+        self.step = step
+    }
     @Published var micGranted = false
     @Published var speechGranted = false
     @Published var accessibilityGranted = false
