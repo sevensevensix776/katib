@@ -390,8 +390,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func openWelcomeWindow() {
         if let window = welcomeWindow {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            bringToFront(window)
             return
         }
         let view = WelcomeView(
@@ -415,8 +414,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.isReleasedWhenClosed = false
         window.center()
         welcomeWindow = window
+        bringToFront(window)
+    }
+
+    /// On a first launch the Gatekeeper "downloaded from the Internet" dialog
+    /// holds activation, and macOS can refuse ours, so makeKeyAndOrderFront
+    /// alone leaves the window behind other apps. orderFrontRegardless shows
+    /// it anyway; the retry makes it key once activation is allowed.
+    private func bringToFront(_ window: NSWindow) {
         window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
         NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            guard window.isVisible, !NSApp.isActive else { return }
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+        }
     }
 
     // `internal` so Bootstrap/AppDelegate+CommandPalette.swift can call it.
@@ -650,6 +664,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let totalMs = Int(Date().timeIntervalSince(pipelineStart) * 1000)
             Logger.shared.log("DICT pipeline: correct=\(correctMs)ms code=\(codeMs)ms polish=0ms paste=0ms total=\(totalMs)ms testMode=true")
             testCallback(correctedText)
+            // The dictation window must still finish: without this it stays
+            // on "listening" after the welcome test.
+            LiveIndicatorWindowController.shared.updateState(.success("Test heard"))
+            if settings.playFeedbackSounds { NSSound(named: "Pop")?.play() }
             return
         }
 
