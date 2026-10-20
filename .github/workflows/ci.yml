@@ -12,9 +12,9 @@ concurrency:
 
 jobs:
   build-and-test:
-    # Swift 6.1 + macOS 26 target needs a recent macOS runner. GitHub's
-    # macos-14 runner has Xcode 16 by default — swap to macos-15 when it's GA.
-    runs-on: macos-15
+    # Katib uses macOS 26 APIs (SpeechAnalyzer), so it needs the macOS 26 SDK,
+    # which ships with Xcode 26. macos-15 has Xcode 16 and cannot build it.
+    runs-on: macos-26
 
     steps:
       - uses: actions/checkout@v5
