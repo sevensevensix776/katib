@@ -239,9 +239,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         popoverState.refreshPermissions()
         let accessibilityGranted = hotkeyManager.hasAccessibilityPermission
 
-        guard !(popoverState.microphoneGranted && popoverState.speechGranted && accessibilityGranted) else { return }
+        guard !(popoverState.microphoneGranted && popoverState.speechGranted && accessibilityGranted
+                && popoverState.screenRecordingGranted) else { return }
 
-        Logger.shared.log("Missing permissions on launch — opening popover (mic=\(popoverState.microphoneGranted) speech=\(popoverState.speechGranted) a11y=\(accessibilityGranted))")
+        Logger.shared.log("Missing permissions on launch — opening popover (mic=\(popoverState.microphoneGranted) "
+            + "speech=\(popoverState.speechGranted) a11y=\(accessibilityGranted) screen=\(popoverState.screenRecordingGranted))")
 
         // Brief delay so the status item is fully laid out before we anchor the popover.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in

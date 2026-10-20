@@ -171,6 +171,14 @@ struct MenuBarView: View {
                     pane: .speechRecognition
                 )
             }
+            if !popoverState.screenRecordingGranted {
+                permissionRow(
+                    label: "Screen Recording required",
+                    detail: "Needed for ⇧⌘3 / ⇧⌘4 screenshots.",
+                    action: { _ = CGRequestScreenCaptureAccess() },
+                    pane: .screenRecording
+                )
+            }
         }
     }
 

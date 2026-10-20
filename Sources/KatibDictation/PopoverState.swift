@@ -17,6 +17,7 @@ public final class PopoverState: ObservableObject {
     @Published public var lastTranscription: String?
     @Published public var microphoneGranted: Bool = true
     @Published public var speechGranted: Bool = true
+    @Published public var screenRecordingGranted: Bool = true
 
     /// In-memory ring of the last N transcriptions (newest first). Not persisted
     /// so we don't have plaintext content on disk; survives only until the app
@@ -45,5 +46,6 @@ public final class PopoverState: ObservableObject {
     public func refreshPermissions() {
         microphoneGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
         speechGranted = SFSpeechRecognizer.authorizationStatus() == .authorized
+        screenRecordingGranted = CGPreflightScreenCaptureAccess()
     }
 }
