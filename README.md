@@ -4,16 +4,27 @@
 
 **كاتب — "The Scribe"**
 
-A macOS menu-bar app for the small things you reach for all day. It started as on-device voice dictation (hold a key, speak, release, the words paste) and grew into a kit:
+A macOS menu-bar app for the small things you reach for all day. One app, one permission set, everything on your Mac.
 
-- **Dictation** with on-device speech recognition, a corrections dictionary and optional on-device AI polish
-- **⌘Space command palette**: every Katib action, every installed app, System Settings panes and Spotlight file results in one fuzzy search, plus any search sources you add as [plugins](#plugins)
-- **Clipboard history** with an Alfred-style picker (and an Alfred history import)
-- **Screenshots**, straight to the clipboard or through an annotation editor with arrows, text, blur and redact
-- **Window snapping** in the style of Rectangle, including Chrome, Electron apps and iTerm2
-- **Voice commands**: _"split left"_, _"maximize"_, _"capture screen"_, _"paste last"_, plus Shortcuts and Siri through App Intents
+## What it does
+
+| | How you use it | What happens |
+|---|---|---|
+| **Dictation** | Hold **Right Option**, speak, release | Your words paste where the cursor is. Recognition runs on your Mac, and a corrections dictionary fixes names and terms. |
+| **Command palette** | **⌘Space** (or **⇧⌘K**) | One fuzzy search across Katib actions, apps, System Settings and files, plus any sources you add as [plugins](#plugins). |
+| **Clipboard history** | **⇧⌃⌘V** | Search everything you copied, or paste with **⌘1–⌘9**. Off by default: turn it on in Settings. |
+| **Screenshots** | **⇧⌘3** to clipboard, **⇧⌘4** to annotate | Arrows, text, blur and redact, then **⌘⏎** copies. Each one also saves to `~/Desktop/Katib Screenshots`. |
+| **Window snapping** | Set your keys in Settings → Shortcuts, or drag to an edge | Halves, center, maximize and restore. Works with Chrome, Electron apps and iTerm2. |
+| **Voice commands** | Say the phrase instead of dictating | _"split left"_, _"maximize"_, _"capture screen"_, _"paste last"_. Also in Shortcuts and Siri. |
 
 Audio, transcripts, clipboard contents and screenshots stay on your Mac. Katib sends nothing anywhere unless a build turns on crash reporting (see [Privacy](#privacy)).
+
+> [!IMPORTANT]
+> **Before you install**
+> - **macOS 26 (Tahoe) or later, Apple Silicon only.** Katib uses Apple's on-device speech APIs, which older Macs do not have.
+> - **Katib takes over shortcuts:** **⇧⌘3** and **⇧⌘4** become Katib screenshots, and **⌘Space** opens Katib's palette when Spotlight's shortcut is off. You can change all of them in Settings → Shortcuts.
+> - **Clipboard history is off** until you turn it on.
+> - **A plugin is code that runs on your Mac.** Install only plugins you trust.
 
 Built by 776. MIT licensed.
 
@@ -29,8 +40,6 @@ Download the latest `Katib-<version>.dmg` from [Releases](https://github.com/sev
 Or [build it yourself](#build-from-source).
 
 **Upgrading:** quit Katib from the menu bar first, then replace the app. Replacing a running copy can break paste until you grant Accessibility again.
-
-**Heads-up:** Katib takes over **⇧⌘3** and **⇧⌘4** for its own screenshots, and **⌘Space** for its palette when Spotlight's shortcut is off (otherwise **⇧⌘K**). You can change every shortcut in Settings → Shortcuts.
 
 ## Shortcuts
 
@@ -102,7 +111,7 @@ A plugin can do either or both:
 {"items": [{"id": "a1", "title": "Weekly notes", "subtitle": "notes/weekly.md:12", "url": "https://…", "snippet": "the [matched] words"}]}
 ```
 
-Only `title` is required. `url` is opened on Return (web URL, file URL or absolute path). `[brackets]` in `snippet` show in bold. A non-zero exit or a timeout shows as a short note in the plugin's header; a missing executable shows nothing. `id`: lowercase letters, digits and `-`.
+Only `title` is required. `url` is opened on Return (web URL, file URL or absolute path). `[brackets]` in `snippet` show in bold. Katib runs the command as you, with your access to files and the network, so treat a plugin like any program you install. A non-zero exit or a timeout shows as a short note in the plugin's header; a missing executable shows nothing. `id`: lowercase letters, digits and `-`.
 
 **Dictionary.** `file` has the same shape as your corrections file:
 
