@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    # Swift 6.1 + macOS 26 target needs a recent macOS runner. GitHub's
+    # macos-14 runner has Xcode 16 by default — swap to macos-15 when it's GA.
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Resolve dependencies
+        run: swift package resolve
+
+      - name: Build
+        run: swift build -c debug
+
+      - name: Test
+        run: swift test
+
+      - name: Install SwiftLint
+        run: brew install swiftlint
+
+      - name: Lint
+        # Exit non-zero only on `error`-severity rules. Warnings surface as PR
+        # annotations (github-actions-logging) but don't block merge.
+        run: swiftlint lint --quiet --reporter github-actions-logging

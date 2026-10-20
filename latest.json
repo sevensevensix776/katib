@@ -1,0 +1,5 @@
+{
+  "version": "2.2.0",
+  "url": "https://github.com/sevensevensix776/katib/releases/tag/v2.2.0",
+  "notes": "Katib is open source (MIT). New: plugins add search sources to ⌘Space and dictionaries to dictation (Settings → General → Plugins). Analytics removed; crash reporting is off unless a build turns it on. Corrections now save only your own changes."
+}

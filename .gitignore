@@ -1,0 +1,23 @@
+# Swift build artifacts
+.build/
+.swiftpm/
+Package.resolved
+
+# App bundle output (produced by build-app.sh)
+Katib.app/
+*.dmg
+*.zip
+notarization.log
+
+# macOS
+.DS_Store
+
+# Xcode
+*.xcworkspace
+xcuserdata/
+DerivedData/
+
+# Editor
+.vscode/
+.idea/
+Katib-*.dmg
