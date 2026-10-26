@@ -18,6 +18,8 @@ public final class PopoverState: ObservableObject {
     @Published public var microphoneGranted: Bool = true
     @Published public var speechGranted: Bool = true
     @Published public var screenRecordingGranted: Bool = true
+    /// True while the popover is on screen. Animations pause when it is not.
+    @Published public var isVisible: Bool = false
 
     /// In-memory ring of the last N transcriptions (newest first). Not persisted
     /// so we don't have plaintext content on disk; survives only until the app

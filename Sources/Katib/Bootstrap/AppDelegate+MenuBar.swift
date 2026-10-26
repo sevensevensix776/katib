@@ -6,7 +6,7 @@ import KatibCore
 /// watchdog loop that dims the icon when the hotkey tap dies (usually
 /// means Accessibility permission was revoked). Auto-recovers once the
 /// tap comes back.
-extension AppDelegate {
+extension AppDelegate: NSPopoverDelegate {
     func setupMenuBar() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem?.button {
@@ -50,6 +50,7 @@ extension AppDelegate {
         popover = NSPopover()
         popover?.behavior = .transient
         popover?.animates = true
+        popover?.delegate = self
 
         let view = MenuBarView(
             hotkeyManager: hotkeyManager,
@@ -67,6 +68,11 @@ extension AppDelegate {
         )
         popover?.contentViewController = NSHostingController(rootView: view)
     }
+
+    // The hosting controller stays alive while closed; without this the header
+    // owl keeps redrawing at 15 fps for nobody.
+    func popoverWillShow(_ notification: Notification) { popoverState.isVisible = true }
+    func popoverDidClose(_ notification: Notification) { popoverState.isVisible = false }
 
     @objc func statusItemClicked(_ sender: NSStatusBarButton) {
         let event = NSApp.currentEvent

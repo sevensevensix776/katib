@@ -86,7 +86,7 @@ struct MenuBarView: View {
 
     private var header: some View {
         HStack(alignment: .center, spacing: 10) {
-            OwlSpriteView(mood: .listening(speaking: false), moodStartedAt: owlEpoch)
+            OwlSpriteView(mood: .listening(speaking: false), moodStartedAt: owlEpoch, paused: !popoverState.isVisible)
             VStack(alignment: .leading, spacing: 3) {
                 Text("Katib").font(.system(size: 15, weight: .semibold))
                 HStack(spacing: 6) {
