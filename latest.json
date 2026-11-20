@@ -1,5 +1,5 @@
 {
-  "version": "2.2.2",
-  "url": "https://github.com/sevensevensix776/katib/releases/tag/v2.2.2",
-  "notes": "A clearer first run: the welcome window shows which key to hold and lights it while you dictate, and a new step tries one screenshot. Includes 2.2.1's setup fixes."
+  "version": "2.3.0",
+  "url": "https://github.com/sevensevensix776/katib/releases/tag/v2.3.0",
+  "notes": "Every permission on one Manage Permissions sheet, with Grant buttons that open the right pane. The menu bar popover is now a ledger of words and time saved."
 }
