@@ -95,6 +95,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             } else {
                 autoOpenPopoverIfPermissionsMissing()
             }
+            // `open Katib.app --args --manage-permissions`: a link support
+            // can send ("run this, tell me what's red") and how the sheet is
+            // checked in the running app without clicking the menu bar.
+            if CommandLine.arguments.contains("--manage-permissions") {
+                openManagePermissionsWindow()
+            }
 
             if settings.checkForUpdates {
                 updateChecker.check()
@@ -412,7 +418,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        let view = ManagePermissionsView(onClose: { [weak self] in self?.permissionsWindow?.close() })
+        // No onClose: the window's own close button does it. Passing one drew
+        // a second close button under the traffic lights.
+        let view = ManagePermissionsView()
         let hosting = NSHostingController(rootView: view)
         let window = NSWindow(contentViewController: hosting)
         window.title = "Manage Permissions"
