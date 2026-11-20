@@ -30,6 +30,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var tapWatchdogTimer: Timer?
     var popover: NSPopover?
     private var settingsWindow: NSWindow?
+    private var permissionsWindow: NSWindow?
     private var correctionsWindow: NSWindow?
     private var welcomeWindow: NSWindow?
 
@@ -396,6 +397,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.isReleasedWhenClosed = false
         window.center()
         settingsWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// The Rex-style Manage Permissions sheet as its own window, for the menu
+    /// bar menu and popover (Settings embeds the same view as a sheet).
+    func openManagePermissionsWindow() {
+        popover?.performClose(nil)
+
+        if let window = permissionsWindow {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let view = ManagePermissionsView(onClose: { [weak self] in self?.permissionsWindow?.close() })
+        let hosting = NSHostingController(rootView: view)
+        let window = NSWindow(contentViewController: hosting)
+        window.title = "Manage Permissions"
+        window.styleMask = [.titled, .closable, .fullSizeContentView]
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.isReleasedWhenClosed = false
+        window.center()
+        permissionsWindow = window
+        // Drop the reference on close so a reopen builds a fresh view that
+        // re-reads the permission state.
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.permissionsWindow = nil }
+        }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }

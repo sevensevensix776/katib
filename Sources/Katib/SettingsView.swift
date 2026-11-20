@@ -413,94 +413,38 @@ private struct ScreenshotSettingsPane: View {
 
 private struct PermissionsSettingsPane: View {
     @ObservedObject var hotkeyManager: HotkeyManager
-    @State private var microphoneGranted: Bool = true
-    @State private var speechGranted: Bool = true
+    @StateObject private var model = PermissionsModel()
+    @State private var showingSheet = false
+
+    private var grantedCount: Int {
+        KatibPermission.all.filter { model.state($0.id) == .granted }.count
+    }
 
     var body: some View {
         Form {
             Section {
-                permissionRow(
-                    title: "Accessibility",
-                    detail: "Detect the hotkey and paste transcribed text.",
-                    granted: hotkeyManager.hasAccessibilityPermission,
-                    pane: .accessibility,
-                    requestAction: { hotkeyManager.requestAccessibilityPermission() }
-                )
-                permissionRow(
-                    title: "Microphone",
-                    detail: "Capture audio when you hold the hotkey.",
-                    granted: microphoneGranted,
-                    pane: .microphone,
-                    requestAction: { requestMicrophone() }
-                )
-                permissionRow(
-                    title: "Speech Recognition",
-                    detail: "On-device transcription via Apple's Speech framework.",
-                    granted: speechGranted,
-                    pane: .speechRecognition,
-                    requestAction: { requestSpeech() }
-                )
-                permissionRow(
-                    title: "Screen Recording",
-                    detail: "Needed only for the Capture feature — prompted on first use.",
-                    granted: CGPreflightScreenCaptureAccess(),
-                    pane: .screenRecording,
-                    requestAction: { _ = CGRequestScreenCaptureAccess() }
-                )
-            }
-        }
-        .formStyle(.grouped)
-        .onAppear { refresh() }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            refresh()
-        }
-    }
-
-    private func permissionRow(
-        title: String,
-        detail: String,
-        granted: Bool,
-        pane: SettingsPane,
-        requestAction: @escaping () -> Void
-    ) -> some View {
-        HStack(alignment: .top) {
-            Image(systemName: granted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                .foregroundColor(granted ? .green : .orange)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).fontWeight(.medium)
-                Text(detail).font(.caption).foregroundColor(.secondary)
-            }
-            Spacer()
-            if granted {
-                Text("Granted").font(.caption).foregroundColor(.secondary)
-            } else {
-                Button("Grant") {
-                    requestAction()
-                    pane.open()
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("System permissions").fontWeight(.medium)
+                        Text("\(grantedCount) of \(KatibPermission.all.count) granted. One sheet shows what each permission lets Katib do.")
+                            .font(.caption).foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Button("Manage Permissions…") { showingSheet = true }
                 }
             }
         }
-    }
-
-    private func refresh() {
-        microphoneGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
-        speechGranted = SFSpeechRecognizer.authorizationStatus() == .authorized
-        hotkeyManager.checkAccessibilityPermission()
-    }
-
-    private func requestMicrophone() {
-        // The completion handler runs on TCC's dispatch queue, not main.
-        // Marking it @Sendable forces the closure to be non-isolated, so
-        // Swift 6's strict concurrency check doesn't crash when TCC invokes
-        // it. The Task hop inside re-enters MainActor for the UI refresh.
-        AVCaptureDevice.requestAccess(for: .audio) { @Sendable _ in
-            Task { @MainActor in refresh() }
+        .formStyle(.grouped)
+        .onAppear {
+            model.refresh()
+            hotkeyManager.checkAccessibilityPermission()
         }
-    }
-
-    private func requestSpeech() {
-        SFSpeechRecognizer.requestAuthorization { @Sendable _ in
-            Task { @MainActor in refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            model.refresh()
+            hotkeyManager.checkAccessibilityPermission()
+        }
+        .sheet(isPresented: $showingSheet) {
+            ManagePermissionsView(onClose: { showingSheet = false })
         }
     }
 }

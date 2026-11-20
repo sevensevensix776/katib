@@ -45,6 +45,7 @@ struct MenuBarView: View {
     }
 
     let openSettings: () -> Void
+    let openPermissions: () -> Void
     let openCorrections: () -> Void
     let onRePasteLast: () -> Void
     let onUndoLast: () -> Void
@@ -178,6 +179,11 @@ struct MenuBarView: View {
                     action: { _ = CGRequestScreenCaptureAccess() },
                     pane: .screenRecording
                 )
+            }
+            if !hotkeyManager.hasAccessibilityPermission || !microphoneGranted || !speechGranted || !popoverState.screenRecordingGranted {
+                Button("Manage Permissions…", action: openPermissions)
+                    .font(.caption)
+                    .buttonStyle(.link)
             }
         }
     }

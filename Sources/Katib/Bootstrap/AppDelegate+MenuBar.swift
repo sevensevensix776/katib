@@ -62,6 +62,7 @@ extension AppDelegate: NSPopoverDelegate {
             clipboard: clipboard,
             history: history,
             openSettings: { [weak self] in self?.openSettingsWindow() },
+            openPermissions: { [weak self] in self?.openManagePermissionsWindow() },
             openCorrections: { [weak self] in self?.openCorrectionsWindow() },
             onRePasteLast: { [weak self] in self?.rePasteLast() },
             onUndoLast: { [weak self] in self?.outputManager.undoLastPaste() }
@@ -133,6 +134,10 @@ extension AppDelegate: NSPopoverDelegate {
         prefs.target = self
         menu.addItem(prefs)
 
+        let perms = NSMenuItem(title: "Manage Permissions…", action: #selector(openManagePermissionsFromMenu), keyEquivalent: "")
+        perms.target = self
+        menu.addItem(perms)
+
         let correct = NSMenuItem(title: "Edit Corrections…", action: #selector(openCorrectionsFromMenu), keyEquivalent: "")
         correct.target = self
         menu.addItem(correct)
@@ -150,5 +155,6 @@ extension AppDelegate: NSPopoverDelegate {
     @objc func togglePopoverFromMenu() { togglePopover() }
     @objc func captureFromMenu() { screenshotManager.startCapture() }
     @objc func openSettingsFromMenu() { openSettingsWindow() }
+    @objc func openManagePermissionsFromMenu() { openManagePermissionsWindow() }
     @objc func openCorrectionsFromMenu() { openCorrectionsWindow() }
 }

@@ -26,6 +26,7 @@ public struct WelcomeView: View {
     public let installScreenshotCallback: ((() -> Void)?) -> Void
 
     @StateObject private var state: OnboardingState
+    @StateObject private var permissions = PermissionsModel()
     /// Lights the key in the keyboard drawing while Katib is recording, and
     /// says so while the speech model is still getting ready.
     @ObservedObject private var transcriber: StreamingTranscriber
@@ -161,47 +162,13 @@ public struct WelcomeView: View {
         }
     }
 
+    /// The Rex-style rows (shared with Settings → Manage Permissions). The
+    /// step's own gate still reads `state.dictationGranted`.
     private var permissionsContent: some View {
         VStack(spacing: 10) {
-            permissionRow(
-                title: "Microphone",
-                detail: "So Katib can hear what you say.",
-                granted: state.micGranted,
-                action: { state.requestMic() }
-            )
-            permissionRow(
-                title: "Speech Recognition",
-                detail: "Apple's on-device model that turns audio into text. Stays on your Mac.",
-                granted: state.speechGranted,
-                action: { state.requestSpeech() }
-            )
-            permissionRow(
-                title: "Accessibility",
-                detail: "Lets Katib paste at your cursor and intercept the hotkey globally.",
-                granted: state.accessibilityGranted,
-                action: { state.requestAccessibility() }
-            )
-            permissionRow(
-                title: "Screen Recording",
-                detail: "Needed for ⇧⌘3 / ⇧⌘4 screenshot capture and annotation.",
-                granted: state.screenRecordingGranted,
-                action: { state.requestScreenRecording() }
-            )
-            // macOS often applies a new Screen Recording grant only after
-            // the app restarts, so the row can stay unchecked after the user
-            // turned it on.
-            if state.screenRecordingRequested && !state.screenRecordingGranted {
-                HStack {
-                    Text("Turned Screen Recording on already? Katib needs a restart to see it.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Button("Quit & Reopen") { OnboardingState.relaunch() }
-                        .controlSize(.small)
-                }
-            }
+            PermissionsPanel(model: permissions)
             if !state.dictationGranted {
-                Text("Toggle each in System Settings, then come back. Continue unlocks when the first three are on.")
+                Text("Turn each one on in System Settings, then come back. Continue unlocks when the first three are on.")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -403,7 +370,7 @@ final class OnboardingState: ObservableObject {
         var subtitle: String? {
             switch self {
             case .welcome: return "كاتب — The Scribe"
-            case .permissions: return "Four one-time prompts. Each opens its System Settings panel."
+            case .permissions: return "One-time setup. Each switches to Granted here when you turn it on."
             case .test, .screenshot: return nil
             case .done: return "A handful of other things Katib does, while you're here."
             }
@@ -421,7 +388,6 @@ final class OnboardingState: ObservableObject {
     @Published var screenRecordingGranted = false
     @Published var testTranscript: String?
     @Published var testMissed = false
-    @Published var screenRecordingRequested = false
     @Published var screenshotTaken = false
 
     /// What dictation needs. Screen Recording is not required to continue:
@@ -477,67 +443,10 @@ final class OnboardingState: ObservableObject {
         }
     }
 
-    /// Quit and open Katib again, for a Screen Recording grant that macOS
-    /// applies only to a new process. `open` waits for this one to exit
-    /// (the single-instance lock) via the short sleep.
-    static func relaunch() {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/bin/sh")
-        task.arguments = ["-c", "sleep 1; /usr/bin/open \"$0\"", Bundle.main.bundlePath]
-        try? task.run()
-        NSApp.terminate(nil)
-    }
-
     func refresh() {
-        micGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
-        speechGranted = SFSpeechRecognizer.authorizationStatus() == .authorized
-        accessibilityGranted = AXIsProcessTrusted()
-        screenRecordingGranted = CGPreflightScreenCaptureAccess()
-    }
-
-    // MARK: - Permission requests
-
-    /// Programmatic mic prompt. `@Sendable` empty completion is mandatory here
-    /// — TCC fires the callback on a non-main queue, and without `@Sendable`
-    /// Swift 6 infers @MainActor isolation from the call site and `SIGTRAP`s
-    /// via `dispatch_assert_queue_fail`. Same fix MenuBarView uses.
-    func requestMic() {
-        AVCaptureDevice.requestAccess(for: .audio) { @Sendable _ in }
-        openSettingsIfDenied(.microphone,
-                             status: AVCaptureDevice.authorizationStatus(for: .audio) == .authorized)
-    }
-
-    func requestSpeech() {
-        SFSpeechRecognizer.requestAuthorization { @Sendable _ in }
-        openSettingsIfDenied(.speechRecognition,
-                             status: SFSpeechRecognizer.authorizationStatus() == .authorized)
-    }
-
-    /// Triggers the OS Accessibility prompt. Uses the literal CFString value
-    /// of `kAXTrustedCheckOptionPrompt` to dodge the Swift 6 non-Sendable
-    /// global-CFString warning; the string is part of the ABI and won't change.
-    /// Unlike `AXIsProcessTrusted()` (passive), this surfaces the system dialog
-    /// the first time.
-    func requestAccessibility() {
-        _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
-        if !AXIsProcessTrusted() {
-            SettingsPane.accessibility.open()
-        }
-    }
-
-    /// Triggers the OS Screen Recording prompt the first time. After the user
-    /// flips the toggle in System Settings, `CGPreflightScreenCaptureAccess`
-    /// will return true on the next poll and the row auto-advances.
-    func requestScreenRecording() {
-        screenRecordingRequested = true
-        _ = CGRequestScreenCaptureAccess()
-        if !CGPreflightScreenCaptureAccess() {
-            SettingsPane.screenRecording.open()
-        }
-    }
-
-    private func openSettingsIfDenied(_ pane: SettingsPane, status: Bool) {
-        guard !status else { return }
-        pane.open()
+        micGranted = KatibPermission.isGranted(.microphone)
+        speechGranted = KatibPermission.isGranted(.speechRecognition)
+        accessibilityGranted = KatibPermission.isGranted(.accessibility)
+        screenRecordingGranted = KatibPermission.isGranted(.screenRecording)
     }
 }
