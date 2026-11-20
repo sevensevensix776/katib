@@ -10,12 +10,8 @@ Direction A is now in the real views: the popover, the Manage Permissions sheet 
 Images below come from the real SwiftUI views (preview test), not mockups. They sit next to the A mockups.
 Nothing is released: the version is still 2.2.2 plus the unreleased 2.3.0 bump, no DMG, no notarization.
 
-> [!ASK]
-> **Question:** Is 40 words a minute the right typing speed to ship as the default?
-> **What happened**: Time saved is now words / typing speed - time spoken. Your 2026-11-20 day: 14 dictations, 1,286 words, 9:42 spoken. At 40 wpm typing takes 32:09, so 22:27 saved. At 60 wpm it would be 21:26 typing and 11:44 saved. Settings > Dictation has a "Typing speed" field (10 to 200, saved).
-> **Proposal**: Keep 40 (the average typist). Change it only if you want the number to read as your own speed.
-> **Risk**: A high default flatters the number; a low one makes it look small. Short dictations can save nothing, and the figure never goes below 0:00.
-> **Next**: Tell me a number, or leave it; the field already lets each person set theirs.
+**Decided (Asif 2026-11-20 14:19, decision 486):** 40 words a minute is the default; each person can change it in Settings > Dictation.
+
 
 ## What changed
 - **Popover**: 1,286 in large type, then Dictations, Spoken, Typing would take and Time saved (purple) with dotted leaders. Last dictation has a purple left rule and a receipt line. Copy / Paste again / Undo are underlined text. The 776 mark sits in the footer. The owl left the popover header; the Katib icon stays.
