@@ -57,27 +57,58 @@ public final class TranscriptionHistory: @unchecked Sendable {
         }
     }
 
-    /// Count + total word count of entries logged today.
-    public func todayStats() -> (count: Int, words: Int) {
+    /// One day of dictation, as the popover's ledger shows it.
+    public struct DayStats: Equatable, Sendable {
+        public var count = 0
+        public var words = 0
+        /// Seconds the dictation key was held, summed.
+        public var spokenSeconds: Double = 0
+        public init(count: Int = 0, words: Int = 0, spokenSeconds: Double = 0) {
+            self.count = count; self.words = words; self.spokenSeconds = spokenSeconds
+        }
+    }
+
+    /// Entries logged on the person's local calendar day.
+    public func todayStats() -> DayStats {
         guard FileManager.default.fileExists(atPath: historyURL.path),
               let content = try? String(contentsOf: historyURL, encoding: .utf8) else {
-            return (0, 0)
+            return DayStats()
         }
+        return Self.stats(in: content, on: Date())
+    }
 
-        let today = ISO8601DateFormatter().string(from: Date()).prefix(10)
-        var count = 0
-        var words = 0
+    /// Pure core of `todayStats`, so the day rollover can be tested.
+    ///
+    /// Timestamps are stored in UTC. "Today" is the local calendar day, not
+    /// the UTC date: comparing the UTC date prefix rolled the day over at
+    /// 4 pm Pacific (2026-11-20, found while mocking the daily total).
+    static func stats(in content: String, on day: Date, calendar: Calendar = .current) -> DayStats {
+        // A local day touches at most two UTC dates. Skip lines that carry
+        // neither before paying for a JSON decode.
+        guard let interval = calendar.dateInterval(of: .day, for: day) else { return DayStats() }
+        let utcDay = ISO8601DateFormatter()
+        utcDay.formatOptions = [.withFullDate]
+        let prefixes = Set([
+            utcDay.string(from: interval.start),
+            utcDay.string(from: interval.end.addingTimeInterval(-1))
+        ])
 
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let plain = ISO8601DateFormatter()
+
+        var stats = DayStats()
         for line in content.split(separator: "\n") {
-            guard line.contains(today) else { continue }
-            if let data = line.data(using: .utf8),
-               let entry = try? JSONDecoder().decode(Entry.self, from: data) {
-                count += 1
-                words += entry.wordCount
-            }
+            guard prefixes.contains(where: { line.contains($0) }),
+                  let data = line.data(using: .utf8),
+                  let entry = try? JSONDecoder().decode(Entry.self, from: data),
+                  let when = fractional.date(from: entry.timestamp) ?? plain.date(from: entry.timestamp),
+                  interval.contains(when) else { continue }
+            stats.count += 1
+            stats.words += entry.wordCount
+            stats.spokenSeconds += entry.durationSeconds
         }
-
-        return (count, words)
+        return stats
     }
 
     /// One-time migration — wipe the legacy plaintext-bearing file if present.

@@ -43,9 +43,10 @@ public final class PermissionsModel: ObservableObject {
     }
 }
 
-/// Callout + permission rows. The welcome step embeds this; the sheet wraps
-/// it with the app icon and title.
+/// Callout + PERMISSION / STATUS table. The welcome step embeds this; the
+/// sheet wraps it with the title and the app icon. 776 Ledger look: Theme776.
 public struct PermissionsPanel: View {
+    @Environment(\.colorScheme) private var scheme
     @ObservedObject var model: PermissionsModel
     let appIcon: NSImage
 
@@ -54,18 +55,30 @@ public struct PermissionsPanel: View {
         self.appIcon = appIcon ?? NSApp?.applicationIconImage ?? NSImage()
     }
 
+    private var p: Palette776 { .for(scheme) }
+
     public var body: some View {
-        VStack(spacing: 14) {
-            if model.showsDragCallout { callout }
-            VStack(spacing: 0) {
-                let rows = KatibPermission.all
-                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                    PermissionRow(row: row, state: model.state(row.id)) { model.grant(row.id) }
-                    if index < rows.count - 1 { Divider().padding(.leading, 62) }
-                }
+        VStack(alignment: .leading, spacing: 0) {
+            if model.showsDragCallout { callout.padding(.bottom, 18) }
+            Rule776(heavy: true)
+            HStack {
+                Label776("Permission")
+                Spacer()
+                Label776("Status")
             }
-            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.primary.opacity(0.1)))
+            .padding(.vertical, 9)
+            let rows = KatibPermission.all
+            ForEach(Array(rows.enumerated()), id: \.element.id) { _, row in
+                Rule776()
+                PermissionRow(row: row, state: model.state(row.id)) { model.grant(row.id) }
+            }
+            Rule776()
+            HStack {
+                Mark776(width: 26)
+                Spacer()
+                Label776("\(grantedCount) of \(rows.count) granted", size: 9.5, color: p.muted)
+            }
+            .padding(.top, 14)
         }
         // Back from System Settings: flip to Granted at once. The timer
         // covers a toggle flipped while Katib stays in front.
@@ -78,93 +91,79 @@ public struct PermissionsPanel: View {
         .onAppear { model.refresh() }
     }
 
+    private var grantedCount: Int {
+        KatibPermission.all.filter { model.state($0.id) == .granted }.count
+    }
+
     private var callout: some View {
-        // Bold lead like Rex's "Drag the icon above into the list…".
-        (Text("Drag the icon above into the list in System Settings.").bold()
-            + Text(" Turn Katib on if it is already there."))
-            .font(.callout)
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .frame(maxWidth: .infinity)
-            .background(Color.accentColor.opacity(0.16), in: RoundedRectangle(cornerRadius: 8))
+        HStack(alignment: .top, spacing: 12) {
+            Rectangle().fill(p.purple).frame(width: 2)
+            VStack(alignment: .leading, spacing: 3) {
+                Label776("Drag", color: p.purpleText)
+                Text("Drag the icon above into the list in System Settings. Turn Katib on if it is already there.")
+                    .font(Type776.font(12.5)).foregroundColor(p.body)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
 private struct PermissionRow: View {
+    @Environment(\.colorScheme) private var scheme
     let row: KatibPermission
     let state: PermissionsModel.RowState
     let grant: () -> Void
 
+    private var p: Palette776 { .for(scheme) }
+
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: row.symbol)
-                .font(.system(size: 16))
-                .foregroundColor(.secondary)
-                .frame(width: 36, height: 36)
-                .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
-            VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .center, spacing: 8) {
                 // One Text so a long name ("Screen & System Audio Recording")
                 // wraps instead of truncating; "Optional" trails it.
-                (Text(row.name).font(.system(size: 13, weight: .semibold))
-                    + Text(row.required ? "" : "  Optional").font(.system(size: 11, weight: .medium)).foregroundColor(.secondary))
+                (Text(row.name).font(Type776.font(15, .medium)).foregroundColor(p.ink)
+                    + Text(row.required ? "" : "   OPTIONAL").font(Type776.font(9.5, .medium)).tracking(1.9).foregroundColor(p.muted))
                     .fixedSize(horizontal: false, vertical: true)
-                Text(row.why)
-                    .font(.system(size: 11.5))
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                if state == .needsRelaunch {
-                    Text("Turned it on already? Katib needs a restart to see it.")
-                        .font(.system(size: 11)).foregroundColor(.orange)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                Spacer(minLength: 8)
+                trailing
             }
-            Spacer(minLength: 8)
-            trailing
+            Text(row.why)
+                .font(Type776.font(12)).foregroundColor(p.muted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.trailing, 90)
+            if state == .needsRelaunch {
+                Text("Turned it on already? Katib needs a restart to see it.")
+                    .font(Type776.font(11.5)).foregroundColor(p.purpleText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
+        .padding(.vertical, 13)
     }
 
     @ViewBuilder
     private var trailing: some View {
         switch state {
         case .granted:
-            HStack(spacing: 4) {
-                Image(systemName: "checkmark.circle").font(.system(size: 11, weight: .semibold))
-                Text("Granted").font(.system(size: 12, weight: .medium))
+            HStack(spacing: 6) {
+                Circle().fill(p.purple).frame(width: 6, height: 6)
+                Label776("Granted", color: p.ink)
             }
-            .foregroundColor(Color(nsColor: .systemGreen))
-            .padding(.horizontal, 10).padding(.vertical, 5)
-            .background(Color(nsColor: .systemGreen).opacity(0.14), in: Capsule())
         case .missing:
-            Button("Grant…", action: grant).buttonStyle(ChipButtonStyle())
+            Button("Grant…", action: grant).buttonStyle(Button776Style())
         case .needsRelaunch:
             VStack(alignment: .trailing, spacing: 6) {
                 Button("Relaunch to finish") { AppRelaunch.relaunch() }
-                    .buttonStyle(ChipButtonStyle(prominent: true))
-                Button("Grant…", action: grant).buttonStyle(ChipButtonStyle())
+                    .buttonStyle(Button776Style(filled: true))
+                Button("Grant…", action: grant).buttonStyle(Button776Style())
             }
         }
     }
 }
 
-private struct ChipButtonStyle: ButtonStyle {
-    var prominent = false
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 12, weight: .medium))
-            .foregroundColor(prominent ? .white : .primary)
-            .padding(.horizontal, 12).padding(.vertical, 5)
-            .background(
-                Capsule().fill(prominent ? Color.accentColor : Color.primary.opacity(0.09))
-            )
-            .opacity(configuration.isPressed ? 0.7 : 1)
-    }
-}
-
-/// The "Manage Permissions" sheet: app icon, title, callout, rows.
+/// The "Manage Permissions" sheet: title, app icon to drag, callout, table.
 public struct ManagePermissionsView: View {
+    @Environment(\.colorScheme) private var scheme
     @StateObject private var model = PermissionsModel()
     let appIcon: NSImage
     let onClose: (() -> Void)?
@@ -174,30 +173,38 @@ public struct ManagePermissionsView: View {
         self.onClose = onClose
     }
 
+    private var p: Palette776 { .for(scheme) }
+
     public var body: some View {
-        VStack(spacing: 16) {
-            // Drag this onto the System Settings list: a file provider for the
-            // app bundle, so the drop adds Katib itself.
-            Image(nsImage: appIcon)
-                .resizable()
-                .frame(width: 76, height: 76)
-                .onDrag { NSItemProvider(contentsOf: Bundle.main.bundleURL) ?? NSItemProvider() }
-                .help("Drag into the list in System Settings")
-                .padding(.top, 24)
-            Text("Manage Permissions")
-                .font(.system(size: 22, weight: .bold))
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top) {
+                Headline776("Manage permissions", size: 30)
+                Spacer()
+                // Drag this onto the System Settings list: a file provider for
+                // the app bundle, so the drop adds Katib itself.
+                Image(nsImage: appIcon)
+                    .resizable()
+                    .frame(width: 46, height: 46)
+                    .onDrag { NSItemProvider(contentsOf: Bundle.main.bundleURL) ?? NSItemProvider() }
+                    .help("Drag into the list in System Settings")
+            }
+            Text("Katib needs four things from macOS. Everything stays on your Mac.")
+                .font(Type776.font(13)).foregroundColor(p.muted)
+                .padding(.top, 6).padding(.bottom, 18)
             PermissionsPanel(model: model, appIcon: appIcon)
         }
-        .padding(.horizontal, 22)
-        .padding(.bottom, 22)
+        .padding(26)
+        .padding(.top, onClose == nil ? 10 : 0)
         .frame(width: 460)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .overlay(alignment: .topLeading) {
+        .background(p.box)
+        .overlay(alignment: .topTrailing) {
             if let onClose {
+                // Sheet only: the menu-bar window uses its own close button
+                // (fd59a51), and passes no onClose.
                 Button(action: onClose) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 20))
-                        .foregroundColor(.secondary.opacity(0.6))
+                        .foregroundColor(p.muted.opacity(0.7))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Close")

@@ -31,8 +31,15 @@ public final class PopoverState: ObservableObject {
         refreshPermissions()
     }
 
-    public func pushRecent(_ text: String) {
+    /// Receipt and wall-clock time of the newest dictation, for the popover's
+    /// "Last dictation" block. Not persisted, like `lastTranscription`.
+    @Published public private(set) var lastReceipt: DictationReceipt?
+    @Published public private(set) var lastDictationAt: Date?
+
+    public func pushRecent(_ text: String, receipt: DictationReceipt? = nil, at date: Date = Date()) {
         lastTranscription = text
+        lastReceipt = receipt
+        lastDictationAt = date
         var next = recent.filter { $0 != text }
         next.insert(text, at: 0)
         if next.count > recentCap { next.removeLast(next.count - recentCap) }

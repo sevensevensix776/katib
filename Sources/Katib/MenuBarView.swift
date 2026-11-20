@@ -8,9 +8,11 @@ import KatibClipboard
 import KatibScreenshot
 import KatibWindow
 
-/// Popover shown when the menu bar icon is clicked. Accordion layout: each
-/// feature gets its own collapsible section so the popover stays compact but
-/// every surface is one click away. Expanded state persists to UserDefaults.
+/// Popover shown when the menu bar icon is clicked. Direction A, "776 Ledger"
+/// (2026-11-20): the layout lives in KatibCore's `PopoverLedgerView`; this
+/// view feeds it live state and supplies the two slots that need managers
+/// from this target (permission/update banners, the clipboard list).
+/// The Clipboard row's open state persists to UserDefaults.
 @MainActor
 struct MenuBarView: View {
     @ObservedObject var hotkeyManager: HotkeyManager
@@ -22,125 +24,84 @@ struct MenuBarView: View {
     @ObservedObject var clipboard: ClipboardManager
     let history: TranscriptionHistory
 
-    enum Section: String, CaseIterable, Identifiable {
-        // Screenshots + Windows were in the accordion but didn't earn their
-        // space — Screenshots just showed the save location (already in
-        // Settings), Windows showed inert icons + a tip line. Both removed
-        // from the menu bar popover. The features themselves still work
-        // via hotkeys; Settings → Shortcuts is the one surface for that.
-        case dictate, clipboard
-        var id: String { rawValue }
-        var title: String {
-            switch self {
-            case .dictate: return "Dictate"
-            case .clipboard: return "Clipboard"
-            }
-        }
-        var symbol: String {
-            switch self {
-            case .dictate: return "waveform"
-            case .clipboard: return "doc.on.clipboard"
-            }
-        }
-    }
-
     let openSettings: () -> Void
     let openPermissions: () -> Void
     let openCorrections: () -> Void
     let onRePasteLast: () -> Void
     let onUndoLast: () -> Void
 
-    @State private var expanded: Set<Section> = MenuBarView.loadExpanded()
+    @State private var clipboardOpen: Bool = MenuBarView.loadClipboardOpen()
     @State private var copyFeedbackID: UUID?
-    @State private var correctionsHover = false
-    /// Fixed start so the header owl keeps its blink rhythm across popover opens.
-    private let owlEpoch = Date(timeIntervalSinceReferenceDate: 0)
+    @Environment(\.colorScheme) private var scheme
 
-    private var lastTranscription: String? { popoverState.lastTranscription }
     private var microphoneGranted: Bool { popoverState.microphoneGranted }
     private var speechGranted: Bool { popoverState.speechGranted }
-
-    private var todayStats: (count: Int, words: Int) { history.todayStats() }
+    private var p: Palette776 { .for(scheme) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            header
-
-            if updateChecker.available {
-                updateBanner
+        let stats = history.todayStats()
+        let now = Date()
+        let data = PopoverLedgerData(
+            ready: transcriber.isReady,
+            statusText: transcriber.isReady ? "Ready" : transcriber.statusMessage,
+            dateLabel: PopoverLedgerData.dateLabel(now),
+            figures: LedgerFigures(dictations: stats.count, words: stats.words,
+                                   spokenSeconds: stats.spokenSeconds, wpm: settings.typingWPM),
+            typingWPM: settings.typingWPM,
+            lastText: popoverState.lastTranscription,
+            lastReceipt: popoverState.lastReceipt,
+            lastTime: popoverState.lastDictationAt.map { PopoverLedgerData.timeLabel($0) },
+            hotkeyName: settings.hotkeySide.displayName,
+            correctionsCount: corrections.totalCount,
+            clipboardBadge: settings.clipboardEnabled ? "\(clipboard.items.count)" : "off"
+        )
+        PopoverLedgerView(
+            data: data,
+            actions: PopoverLedgerActions(
+                openSettings: openSettings,
+                openCorrections: openCorrections,
+                copyLast: copyLast,
+                pasteAgain: onRePasteLast,
+                undo: onUndoLast,
+                quit: { NSApplication.shared.terminate(nil) }
+            ),
+            clipboardOpen: Binding(get: { clipboardOpen }, set: { clipboardOpen = $0; Self.persistClipboardOpen($0) }),
+            copied: copyFeedbackID != nil
+        ) {
+            VStack(alignment: .leading, spacing: 10) {
+                if updateChecker.available { updateBanner }
+                permissionStack
             }
-
-            permissionStack
-
-            ForEach(Section.allCases) { section in
-                accordionRow(section)
-            }
-
-            footer
-        }
-        .padding(14)
-        .frame(minWidth: 360, idealWidth: 360)
-        .tint(AppColors.bronze)
-    }
-
-    // MARK: - Header + chrome
-
-    private var header: some View {
-        HStack(alignment: .center, spacing: 10) {
-            OwlSpriteView(mood: .listening(speaking: false), moodStartedAt: owlEpoch, paused: !popoverState.isVisible)
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Katib").font(.system(size: 15, weight: .semibold))
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(transcriber.isReady ? Color.green : Color.orange)
-                        .frame(width: 7, height: 7)
-                    Text(transcriber.isReady ? "Ready" : transcriber.statusMessage)
-                        .font(.caption).foregroundColor(.secondary)
-                }
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 6) {
-                Button(action: openSettings) {
-                    Image(systemName: "gearshape").font(.system(size: 13))
-                        .foregroundColor(.secondary)
-                        .frame(width: 24, height: 24)
-                        .background(Color.primary.opacity(0.06), in: Circle())
-                }
-                .buttonStyle(.plain)
-                .help("Settings")
-                .accessibilityLabel("Open Katib settings")
-                .keyboardShortcut(",", modifiers: .command)
-                HStack(spacing: 6) {
-                    StatPill(value: todayStats.count, symbol: "waveform").help("Dictations today")
-                    StatPill(value: todayStats.words, symbol: "text.word.spacing").help("Words dictated today")
-                }
-            }
+        } clipboardBody: {
+            clipboardContent
         }
     }
+
+    // MARK: - Banners
 
     private var updateBanner: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "arrow.down.circle.fill").foregroundColor(AppColors.bronze)
+        HStack(alignment: .top, spacing: 10) {
+            Rectangle().fill(p.purple).frame(width: 2)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Update available — \(updateChecker.latestVersion ?? "?")")
-                    .font(.caption).fontWeight(.medium)
+                Label776("Update available", color: p.purpleText)
+                Text(updateChecker.latestVersion ?? "?").font(Type776.font(12.5)).foregroundColor(p.ink)
                 if let notes = updateChecker.latestNotes, !notes.isEmpty {
-                    Text(notes).font(.caption2).foregroundColor(.secondary).lineLimit(2)
+                    Text(notes).font(Type776.font(11.5)).foregroundColor(p.muted).lineLimit(2)
                 }
             }
             Spacer()
             Button("Download") {
                 if let url = updateChecker.latestURL { NSWorkspace.shared.open(url) }
             }
-            .font(.caption)
+            .buttonStyle(Button776Style())
         }
-        .padding(8)
-        .background(AppColors.bronze.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.bottom, 4)
     }
 
     @ViewBuilder
     private var permissionStack: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             if !hotkeyManager.hasAccessibilityPermission {
                 permissionRow(
                     label: "Accessibility access required",
@@ -181,121 +142,35 @@ struct MenuBarView: View {
                 )
             }
             if !hotkeyManager.hasAccessibilityPermission || !microphoneGranted || !speechGranted || !popoverState.screenRecordingGranted {
-                Button("Manage Permissions…", action: openPermissions)
-                    .font(.caption)
-                    .buttonStyle(.link)
+                Button(action: openPermissions) {
+                    Label776("Manage permissions", color: p.ink)
+                        .overlay(alignment: .bottom) { Rectangle().fill(p.purple).frame(height: 1).offset(y: 3) }
+                }
+                .buttonStyle(.plain)
             }
         }
+        .padding(.bottom, 14)
     }
 
     private func permissionRow(label: String, detail: String, action: @escaping () -> Void, pane: SettingsPane) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange)
+        HStack(alignment: .top, spacing: 10) {
+            Rectangle().fill(p.warn).frame(width: 2)
             VStack(alignment: .leading, spacing: 2) {
-                Text(label).font(.caption).fontWeight(.medium)
-                Text(detail).font(.caption2).foregroundColor(.secondary)
+                Text(label).font(Type776.font(12.5, .medium)).foregroundColor(p.ink)
+                Text(detail).font(Type776.font(11.5)).foregroundColor(p.muted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
             Button("Grant") {
                 action()
                 pane.open()
             }
-            .font(.caption)
+            .buttonStyle(Button776Style())
         }
+        .fixedSize(horizontal: false, vertical: true)
     }
 
-    // MARK: - Accordion
-
-    @ViewBuilder
-    private func accordionRow(_ section: Section) -> some View {
-        let isOpen = expanded.contains(section)
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                toggle(section)
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: section.symbol)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(AppColors.bronzeHighlight)
-                        .frame(width: 22, height: 22)
-                        .background(AppColors.bronze.opacity(0.18), in: RoundedRectangle(cornerRadius: 6))
-                    Text(section.title).font(.callout).fontWeight(.semibold)
-                    if let badge = badge(for: section) {
-                        Text(badge)
-                            .font(.caption2.monospacedDigit()).foregroundColor(.secondary)
-                            .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(Color.primary.opacity(0.08), in: Capsule())
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .semibold)).foregroundColor(.secondary)
-                        .rotationEffect(.degrees(isOpen ? 90 : 0))
-                }
-                .contentShape(Rectangle())
-                .padding(10)
-            }
-            .buttonStyle(.plain)
-
-            if isOpen {
-                sectionContent(section)
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 10)
-            }
-        }
-        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
-    }
-
-    private func toggle(_ section: Section) {
-        if expanded.contains(section) { expanded.remove(section) } else { expanded.insert(section) }
-        persistExpanded()
-    }
-
-    private func badge(for section: Section) -> String? {
-        switch section {
-        case .dictate: return nil
-        case .clipboard:
-            return settings.clipboardEnabled ? "\(clipboard.items.count)" : "off"
-        }
-    }
-
-    @ViewBuilder
-    private func sectionContent(_ section: Section) -> some View {
-        switch section {
-        case .dictate: dictateContent
-        case .clipboard: clipboardContent
-        }
-    }
-
-    // MARK: - Section content
-
-    @ViewBuilder
-    private var dictateContent: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let text = lastTranscription {
-                lastTranscriptionSection(text)
-            } else {
-                Text("Hold **\(settings.hotkeySide.displayName)** anywhere, speak, release. Double-tap to re-paste.")
-                    .font(.caption).foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Button(action: openCorrections) {
-                HStack(spacing: 6) {
-                    Image(systemName: "character.book.closed").foregroundColor(.secondary)
-                    Text("Edit corrections").font(.caption)
-                    Spacer()
-                    Text("\(corrections.totalCount)").foregroundColor(.secondary).font(.caption.monospacedDigit())
-                    Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundColor(.secondary)
-                }
-                .padding(.vertical, 5).padding(.horizontal, 6)
-                .background(correctionsHover ? Color.primary.opacity(0.07) : .clear, in: RoundedRectangle(cornerRadius: 6))
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .onHover { correctionsHover = $0 }
-            .accessibilityLabel("Edit corrections. \(corrections.totalCount) total.")
-        }
-    }
+    // MARK: - Clipboard
 
     @ViewBuilder
     private var clipboardContent: some View {
@@ -303,123 +178,37 @@ struct MenuBarView: View {
             ClipboardPane(clipboard: clipboard)
         } else {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Clipboard history is off.").font(.caption).foregroundColor(.secondary)
-                Button("Turn on") { settings.clipboardEnabled = true }.font(.caption)
+                Text("Clipboard history is off.").font(Type776.font(12)).foregroundColor(p.muted)
+                Button("Turn on") { settings.clipboardEnabled = true }.buttonStyle(Button776Style())
             }
         }
     }
 
-    // MARK: - Last transcription sub-section
+    // MARK: - Last dictation
 
-    private func lastTranscriptionSection(_ text: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 8) {
-                RoundedRectangle(cornerRadius: 1.5)
-                    .fill(AppColors.bronze)
-                    .frame(width: 3)
-                Text(text)
-                    .font(.system(size: 12)).lineLimit(3)
-                    .foregroundColor(.primary.opacity(0.85))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(8)
-            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
-            HStack(spacing: 6) {
-                Button {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(text, forType: .string)
-                    let id = UUID()
-                    copyFeedbackID = id
-                    Task { @MainActor in
-                        try? await Task.sleep(for: .seconds(1.5))
-                        if copyFeedbackID == id { copyFeedbackID = nil }
-                    }
-                } label: {
-                    Label(copyFeedbackID == nil ? "Copy" : "Copied!",
-                          systemImage: copyFeedbackID == nil ? "doc.on.doc" : "checkmark")
-                }
-                Button(action: onRePasteLast) { Label("Paste again", systemImage: "arrow.uturn.forward") }
-                Button(action: onUndoLast) { Label("Undo", systemImage: "arrow.uturn.backward") }
-                Spacer()
-            }
-            .buttonStyle(ChipButtonStyle())
+    private func copyLast() {
+        guard let text = popoverState.lastTranscription else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        let id = UUID()
+        copyFeedbackID = id
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.5))
+            if copyFeedbackID == id { copyFeedbackID = nil }
         }
-    }
-
-    // MARK: - Footer
-
-    private var footer: some View {
-        HStack(spacing: 6) {
-            Text("Hold")
-                .font(.caption).foregroundColor(.secondary)
-            Text(settings.hotkeySide.displayName)
-                .font(.caption.weight(.medium))
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 4))
-                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.primary.opacity(0.12), lineWidth: 0.5))
-            Text("to dictate")
-                .font(.caption).foregroundColor(.secondary)
-            Spacer()
-            Button { NSApplication.shared.terminate(nil) } label: {
-                Label("Quit", systemImage: "power")
-            }
-            .buttonStyle(.plain).foregroundColor(.secondary).font(.caption)
-            .keyboardShortcut("q", modifiers: .command)
-        }
-        .padding(.horizontal, 2)
     }
 
     // MARK: - Persistence
 
+    /// Same key as the old accordion; it stored section names, and only
+    /// "clipboard" is left to remember.
     private static let expandedKey = "menuExpandedSections"
 
-    private static func loadExpanded() -> Set<Section> {
-        if let stored = UserDefaults.standard.stringArray(forKey: expandedKey) {
-            return Set(stored.compactMap(Section.init(rawValue:)))
-        }
-        return [.dictate]
+    private static func loadClipboardOpen() -> Bool {
+        UserDefaults.standard.stringArray(forKey: expandedKey)?.contains("clipboard") ?? false
     }
 
-    private func persistExpanded() {
-        let raw = expanded.map(\.rawValue)
-        UserDefaults.standard.set(raw, forKey: Self.expandedKey)
-    }
-}
-
-// MARK: - Small pieces
-
-/// Today's count with its icon, in a capsule.
-private struct StatPill: View {
-    let value: Int
-    let symbol: String
-
-    var body: some View {
-        HStack(spacing: 3) {
-            Image(systemName: symbol).font(.system(size: 9, weight: .semibold))
-            Text("\(value)").font(.caption2.monospacedDigit().weight(.medium))
-        }
-        .foregroundColor(.secondary)
-        .padding(.horizontal, 7).padding(.vertical, 3)
-        .background(Color.primary.opacity(0.07), in: Capsule())
-    }
-}
-
-/// Bronze capsule button. Custom because the system bordered style turns
-/// near-invisible on the glass popover.
-private struct ChipButtonStyle: ButtonStyle {
-    @State private var hovering = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.caption.weight(.medium))
-            .labelStyle(.titleAndIcon)
-            .foregroundColor(AppColors.bronzeHighlight)
-            .padding(.horizontal, 9).padding(.vertical, 4)
-            .background(
-                AppColors.bronze.opacity(configuration.isPressed ? 0.32 : hovering ? 0.24 : 0.16),
-                in: Capsule()
-            )
-            .overlay(Capsule().stroke(AppColors.bronze.opacity(0.35), lineWidth: 0.5))
-            .onHover { hovering = $0 }
+    private static func persistClipboardOpen(_ open: Bool) {
+        UserDefaults.standard.set(open ? ["clipboard"] : [], forKey: expandedKey)
     }
 }

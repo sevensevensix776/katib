@@ -66,6 +66,7 @@ public final class LiveIndicatorWindowController {
         showGeneration += 1
         viewModel.transcriber = transcriber
         viewModel.state = .recording
+        viewModel.receipt = nil
         viewModel.recordingStartTime = Date()
         viewModel.stateChangedAt = Date()
 
@@ -85,7 +86,9 @@ public final class LiveIndicatorWindowController {
         }
     }
 
-    public func updateState(_ state: IndicatorState) {
+    /// `receipt` shows the "Slack ..... 21 w  0:08  +0:23" line beside a success.
+    public func updateState(_ state: IndicatorState, receipt: DictationReceipt? = nil) {
+        viewModel.receipt = receipt
         viewModel.state = state
         viewModel.stateChangedAt = Date()
 
@@ -147,6 +150,8 @@ class LiveIndicatorViewModel: ObservableObject {
     @Published var state: IndicatorState = .recording
     @Published var transcriber: StreamingTranscriber?
     @Published var recordingStartTime: Date?
+    /// Receipt for the dictation that just pasted; nil for every other state.
+    @Published var receipt: DictationReceipt?
     /// When `state` last changed, so the owl's one-shot moves start from the top.
     @Published var stateChangedAt = Date()
 }
@@ -217,7 +222,11 @@ struct LiveIndicatorView: View {
                 Text(heading)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.green.opacity(0.9))
-                Spacer()
+                Spacer(minLength: 8)
+                if let receipt = viewModel.receipt {
+                    DictationReceiptLine(receipt, size: 11.5, onDark: true)
+                        .frame(maxWidth: 230)
+                }
             }
         case .error:
             HStack(spacing: 6) {

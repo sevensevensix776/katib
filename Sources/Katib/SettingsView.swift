@@ -168,6 +168,24 @@ private struct DictationSettingsPane: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            Section("Time saved") {
+                LabeledContent("Typing speed") {
+                    HStack(spacing: 6) {
+                        TextField("", value: $settings.typingWPM, format: .number)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 56)
+                            .accessibilityLabel("Typing speed in words a minute")
+                        Text("words a minute")
+                    }
+                }
+                Text("The popover and each dictation receipt compare what you said with how long it would take to type at this speed. "
+                    + "Time saved is words ÷ speed − time spoken. "
+                    + "Allowed range \(TimeSaved.wpmRange.lowerBound) to \(TimeSaved.wpmRange.upperBound).")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             if AICleanup.shared.isAvailable {
                 Section("AI polish") {
                     Toggle("Polish transcriptions with on-device AI", isOn: $settings.aiPolishEnabled)

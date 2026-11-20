@@ -30,6 +30,7 @@ public final class AppSettings: ObservableObject {
         static let aiPolishEnabled = "aiPolishEnabled"
         static let clipboardEnabled = "clipboardEnabled"
         static let clipboardCapacity = "clipboardCapacity"
+        static let typingWPM = "typingWPM"
         static let clipboardRetention = "clipboardRetention"
         static let clipboardPlainTextPaste = "clipboardPlainTextPaste"
         static let screenshotEnabled = "screenshotEnabled"
@@ -212,6 +213,16 @@ public final class AppSettings: ObservableObject {
     /// reach into the manager directly so the module stays dependency-free.
     @Published public var clipboardEnabled: Bool {
         didSet { defaults.set(clipboardEnabled, forKey: Keys.clipboardEnabled) }
+    }
+
+    /// Typing speed the "time saved" figures compare against (words a minute).
+    /// Out-of-range input is clamped, so the stored value is always usable.
+    @Published public var typingWPM: Int {
+        didSet {
+            let clamped = min(max(typingWPM, TimeSaved.wpmRange.lowerBound), TimeSaved.wpmRange.upperBound)
+            if clamped != typingWPM { typingWPM = clamped; return }
+            defaults.set(typingWPM, forKey: Keys.typingWPM)
+        }
     }
 
     @Published public var clipboardCapacity: Int {
@@ -454,6 +465,8 @@ public final class AppSettings: ObservableObject {
         self.hasSeenWelcome = defaults.object(forKey: Keys.hasSeenWelcome) as? Bool ?? false
         self.aiPolishEnabled = defaults.object(forKey: Keys.aiPolishEnabled) as? Bool ?? false
         self.clipboardEnabled = defaults.object(forKey: Keys.clipboardEnabled) as? Bool ?? false
+        let storedWPM = defaults.integer(forKey: Keys.typingWPM)
+        self.typingWPM = TimeSaved.wpmRange.contains(storedWPM) ? storedWPM : TimeSaved.defaultWPM
         let storedCap = defaults.integer(forKey: Keys.clipboardCapacity)
         // New-install / legacy-migration default is 100K. The picker
         // bottoms out at 50; anything stored below that is from the

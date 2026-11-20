@@ -745,7 +745,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        popoverState.pushRecent(correctedText)
+        // Receipt: words from the corrected text, seconds from key down to key up.
+        let receipt = DictationReceipt(
+            app: activeAppWhenRecording ?? "unknown",
+            words: correctedText.split(separator: " ").count,
+            spokenSeconds: duration,
+            wpm: settings.typingWPM
+        )
+        popoverState.pushRecent(correctedText, receipt: receipt)
         lastRawText = rawText
 
         history.save(
@@ -764,7 +771,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         switch result {
         case .ok:
             let preview = correctedText.count > 60 ? String(correctedText.prefix(60)) + "..." : correctedText
-            LiveIndicatorWindowController.shared.updateState(.success(preview))
+            LiveIndicatorWindowController.shared.updateState(.success(preview), receipt: receipt)
             if settings.playFeedbackSounds { NSSound(named: "Pop")?.play() }
             if settings.saveDictationsToClipboard {
                 clipboard.append(correctedText, sourceApp: "Katib dictation")
